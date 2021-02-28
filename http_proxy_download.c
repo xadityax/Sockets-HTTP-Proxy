@@ -1,17 +1,18 @@
 /* f20171075@hyderabad.bits-pilani.ac.in Aditya Agarwal */
 
 /* Brief description of program...*/
-/* 1. We learned to do Socket programming to set up a socket. We use Ipv4, TCP protocol
-   2. Then we used this socket to connect to our proxy server at a particular ip address and port number
-   3. After establish socket based connection to proxy server, we send a get request. But we have to also
-   authorise by sending Authetication header which contains base64 encoded username:pass string.
-   4. We receive response in buffer. Depending on type of response we move forward.
-   5. In case of HTTP 20X response, we first parse the response to save the HTML doc as index.html
-      Secondly, we copy the img url from IMG tag and then send another get request for just the image.
-      this way we get only the image chunk which we then save as logo.gif by receiving exactly the same
-      number of lens as are recieved in the content-length field for the image.
-   6. In case of HTTP 30X response, we handle as many redirects as they occur until a 20X response is received
-   7. Redirects are handled by */
+/* 1. We learned to do Socket programming to set up a socket and connect to it. We use TCP protocol and IPv4.
+   2. We used this socket to connect to our proxy server at a particular ip address and port number of the proxy server.
+   3. After establishing socket based connection to proxy server, we send a get request through the proxy. But we have to also
+   	  authorise by sending Authetication header which contains base64 encoded username:pass string.
+   4. We receive response in buffer. Depending on type of response we move forward -
+   5. In case of HTTP 20X response, we seperate the header from the body to wite the HTML doc to index.html.
+      Secondly, if the website is info.in2p3.fr we copy the img url from IMG tag and then send another get request for just the image.
+      this way we get only the image chunk (with response header ofcourse) which we then save as logo.gif by seperating from response
+      header.
+   6. In case of HTTP 30X response, we handle as many redirects as they occur until a 20X response is received by checking the status 
+      code in response.
+   7. When finally a 20X response is received, we seperate the header and write the body to index.html. */
 
 #include<stdio.h>
 #include<unistd.h>
@@ -23,7 +24,6 @@
 #include<signal.h>
 #include<stdlib.h>
 #include<string.h>
-//#include<ctype.h>
 
 #define MAX_B_SZ 1000000
 #define MSZ 10000
@@ -133,7 +133,7 @@ int main(int argc, char *argv[]){
     sv_address.sin_family=AF_INET;
     sv_address.sin_addr.s_addr=inet_addr(argv[2]);// proxy 182.75.45.22
     sv_address.sin_port=htons(atoi(argv[3])); // port num 13128
-    
+ 
     num_sock = socket(AF_INET,SOCK_STREAM,IPPROTO_TCP);
     if(num_sock<=0){
         printf("Sock error\n");
@@ -198,14 +198,10 @@ int main(int argc, char *argv[]){
                 printf("Sock error\n");
                 return -1;
             }
-            else printf("Sock Init success\n");
             ssd = connect(num_sock,(struct sockaddr *)&sv_address,(socklen_t)(sizeof sv_address));
             if(num_sock<=0){
                 printf("Sock connect fail\n");
                 return -1;
-            }
-            else{
-                printf("Connection established Successfully \n");
             }
             // send new request
             char redir_buff[MAX_B_SZ], redir_req[100024];
@@ -225,30 +221,21 @@ int main(int argc, char *argv[]){
             //printf("Redir_buff is %s\n",redir_buff);
             memset(buffer,0,sizeof(buffer));
             strcpy(buffer,redir_buff);
-            //printf("Finally after redirect my buffer contains : \n%s",buffer);
             memset(request,0,sizeof(request));
             strcpy(request,redir_req);
         }
         // Done redirecting now we will save html response by seperating header
-        // if(!redirect){
-        //     redir_req[0]='\0';
-        //     strcat(redir_req,request);
-        // }
         num_sock = socket(AF_INET,SOCK_STREAM,IPPROTO_TCP);
         if(num_sock<=0){
             printf("Sock error\n");
             return -1;
         }
-        else printf("Sock Init success\n");
         ssd = connect(num_sock,(struct sockaddr *)&sv_address,(socklen_t)(sizeof sv_address));
         if(num_sock<=0){
             printf("Sock connect fail\n");
             return -1;
         }
-        else{
-            printf("Connection established Successfully \n");
-        }
-        printf("Request sent finally is %s\n",request);
+        //printf("Request sent finally is %s\n",request);
         if(send(num_sock,request,strlen(request),0)<0){
                 printf("Send failed in redirect request\n");
                 return -1;
@@ -261,16 +248,11 @@ int main(int argc, char *argv[]){
                 printf("Sock error\n");
                 return -1;
             }
-            else printf("Sock Init success\n");
             ssd = connect(num_sock,(struct sockaddr *)&sv_address,(socklen_t)(sizeof sv_address));
             if(num_sock<=0){
                 printf("Sock connect fail\n");
                 return -1;
             }
-            else{
-                printf("Connection established Successfully \n");
-            }
-            printf("Request sent finally is %s\n",request);
             if(send(num_sock,request,strlen(request),0)<0){
                     printf("Send failed in redirect request\n");
                     return -1;
@@ -290,7 +272,7 @@ int main(int argc, char *argv[]){
             fclose(fp);
             return 0;
         }
-        printf("Page content length is %d\n",page_lens);
+        //printf("Page content length is %d\n",page_lens);
         FILE *fp;
         fp = fopen(argv[6],"w+");
         if(page_lens){
@@ -311,8 +293,6 @@ int main(int argc, char *argv[]){
             fclose(fp);
         }
         // get img url
-        //printf("argv 1 is %s\n",argv[1]);
-        //printf("%d",strcmp(argv[1],"info.in2p3.fr"));
         if(!strcmp(argv[1],"info.in2p3.fr")){
             for(int i=0;i<strlen(buffer);i++){
                 if(i+3<strlen(buffer) && buffer[i]=='<' && buffer[i+1]=='I' && buffer[i+2]=='M' && buffer[i+3]=='G'){
@@ -332,26 +312,20 @@ int main(int argc, char *argv[]){
                 printf("Sock error\n");
                 return -1;
             }
-            else printf("Sock Init success\n");
             ssd = connect(num_sock,(struct sockaddr *)&sv_address,(socklen_t)(sizeof sv_address));
             if(num_sock<=0){
                 printf("Sock connect fail\n");
                 return -1;
             }
-            else{
-                printf("Connection established Successfully \n");
-            }
             printf("\nRetrieving : %s\n",img_url);
             char new_req[100000];
             sprintf(new_req, "GET http://%s/%s HTTP/1.1\r\nProxy-Authorization: Basic %s\r\nConnection: close\r\n\r\n",argv[1], "cc.gif", b64);
-
             if(send(num_sock,new_req,strlen(new_req),0)<0){
                 printf("Send 2 failed \n");
                 return 1;
             }
-            printf("Img Request Sent\n");
             img_len=findContentLength(num_sock);
-            printf("image length is %d\n",img_len);
+            //printf("image length is %d\n",img_len);
             if(img_len){
                 int lens=0;
                 FILE* image_fd=fopen(argv[7],"wb");
@@ -363,7 +337,7 @@ int main(int argc, char *argv[]){
                     }
                     fwrite(recv_data,1,lengthRecv,image_fd);
                     lens+=lengthRecv;
-                    printf("Length recieved: %d\n",lens);
+                    //printf("Length recieved: %d\n",lens);
                     if(lens==img_len){
                         printf("Image Download Done\n");
                         break;
